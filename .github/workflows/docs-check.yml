@@ -5,6 +5,7 @@ name: Docs consistency
 # internal markdown anchors, version triple drift, stale OS matrix, changelog
 # heading/reference mismatch. No build, no network, no bats.
 on:
+  workflow_dispatch:
 #  push:
 #    branches: [main]
 #    paths:
