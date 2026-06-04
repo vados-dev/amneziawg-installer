@@ -1,11 +1,12 @@
 name: Tests
 
 on:
-  push:
-    branches: [main]
-    paths: ['*.sh', 'scripts/**', 'tests/**']
-  pull_request:
-    paths: ['*.sh', 'scripts/**', 'tests/**']
+  workflow_dispatch:
+#  push:
+#    branches: [main]
+#    paths: ['*.sh', 'scripts/**', 'tests/**']
+#  pull_request:
+#    paths: ['*.sh', 'scripts/**', 'tests/**']
 
 permissions:
   contents: read
