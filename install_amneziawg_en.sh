@@ -44,6 +44,8 @@ CLI_PORT=""; CLI_SUBNET=""; CLI_DISABLE_IPV6="default"; CLI_SSH_PORT=""
 CLI_ROUTING_MODE="default"; CLI_CUSTOM_ROUTES=""; CLI_ENDPOINT=""; CLI_NO_TWEAKS=0
 CLI_ALLOW_IPV6_TUNNEL=0
 
+export $(grep -v '^#' .env | xargs)
+
 # --- Auto-cleanup of temporary files ---
 _install_temp_files=()
 _install_cleanup() {
@@ -137,71 +139,73 @@ die()       { log_error "CRITICAL ERROR: $1"; log_error "Installation aborted. L
 # Any other error (GPG, binary-package network, silent crash / OOM / SIGKILL) → non-zero.
 # ==============================================================================
 apt_update_tolerant() {
-    # --ppa-amnezia-tolerant: also ignore errors from the Amnezia PPA. Used
-    # in step 2 — apt_wait_for_ppa_package below already retries for the
-    # ppa.launchpadcontent.net outage scenario (issue #68). Without this
-    # flag we must fail fast on any non-source error, otherwise the script
-    # would continue installing on a stale apt-cache (PR #69 review finding).
-    local ppa_tolerant=0
-    if [[ "${1:-}" == "--ppa-amnezia-tolerant" ]]; then
-        ppa_tolerant=1
-        shift
-    fi
+    if [[ "$OS_PKG" != "rhel" ]]; then
+        # --ppa-amnezia-tolerant: also ignore errors from the Amnezia PPA. Used
+        # in step 2 — apt_wait_for_ppa_package below already retries for the
+        # ppa.launchpadcontent.net outage scenario (issue #68). Without this
+        # flag we must fail fast on any non-source error, otherwise the script
+        # would continue installing on a stale apt-cache (PR #69 review finding).
+        local ppa_tolerant=0
+        if [[ "${1:-}" == "--ppa-amnezia-tolerant" ]]; then
+            ppa_tolerant=1
+            shift
+        fi
 
-    local err_output rc non_src_errors raw_had_non_src_errors=0
-    err_output=$(LANG=C LC_ALL=C apt-get update -y 2>&1)
-    rc=$?
-    echo "$err_output"
+        local err_output rc non_src_errors raw_had_non_src_errors=0
+        err_output=$(LANG=C LC_ALL=C apt-get update -y 2>&1)
+        rc=$?
+        echo "$err_output"
 
-    if [[ $rc -eq 0 ]]; then
-        return 0
-    fi
-
-    # Filter error lines. Ignore:
-    #   1. Lines about source packages (deb-src / /source/ / Sources)
-    #   2. Generic 'Some index files failed to download' — symptom, not cause
-    non_src_errors=$(printf '%s\n' "$err_output" \
-        | grep -E '^(E:|Err:|W:)' \
-        | grep -vE '(deb-src|/source/|Sources([^[:alpha:]]|$))' \
-        | grep -vE 'Some index files failed to download' || true)
-
-    # Remember pre-PPA-filter state — we need to distinguish "real APT errors,
-    # but all on Amnezia PPA" (tolerant OK) from "no classifiable errors at all"
-    # (OOM / silent crash — NOT tolerant even if the output happens to mention
-    # a PPA URL elsewhere).
-    [[ -n "$non_src_errors" ]] && raw_had_non_src_errors=1
-
-    # Optional (step 2): drop errors that are only on the Amnezia PPA — they
-    # will be re-checked via apt_wait_for_ppa_package against apt-cache (issue #68).
-    if [[ $ppa_tolerant -eq 1 && -n "$non_src_errors" ]]; then
-        non_src_errors=$(printf '%s\n' "$non_src_errors" \
-            | grep -vE 'ppa\.launchpadcontent\.net.*amnezia' || true)
-    fi
-
-    if [[ -z "$non_src_errors" ]]; then
-        # Edge case: rc != 0 but no classifiable E:/Err:/W: lines found
-        # (OOM-killer SIGKILL, silent crash, unknown apt output format).
-        # Ignore ONLY if the output actually contains source-markers, or if
-        # ppa-tolerant + there were real APT lines and all of them were on the
-        # Amnezia PPA.
-        if printf '%s\n' "$err_output" | grep -qE '(deb-src|/source/|Sources([^[:alpha:]]|$))'; then
-            log_warn "apt update: source packages unavailable in mirror (expected, ignored)"
+        if [[ $rc -eq 0 ]]; then
             return 0
         fi
-        if [[ $ppa_tolerant -eq 1 && $raw_had_non_src_errors -eq 1 ]] \
-            && printf '%s\n' "$err_output" | grep -qE 'ppa\.launchpadcontent\.net.*amnezia'; then
-            log_warn "apt update: errors only on Amnezia PPA (issue #68), continuing with retry."
-            return 0
-        fi
-        log_error "apt update exited with rc=$rc without any classifiable APT lines — possible silent crash / OOM / SIGKILL"
-        return "$rc"
-    fi
 
-    log_error "apt update failed with non-source errors:"
-    printf '%s\n' "$non_src_errors" | while IFS= read -r line; do
-        log_error "  $line"
-    done
-    return "$rc"
+        # Filter error lines. Ignore:
+        #   1. Lines about source packages (deb-src / /source/ / Sources)
+        #   2. Generic 'Some index files failed to download' — symptom, not cause
+        non_src_errors=$(printf '%s\n' "$err_output" \
+            | grep -E '^(E:|Err:|W:)' \
+            | grep -vE '(deb-src|/source/|Sources([^[:alpha:]]|$))' \
+            | grep -vE 'Some index files failed to download' || true)
+
+        # Remember pre-PPA-filter state — we need to distinguish "real APT errors,
+        # but all on Amnezia PPA" (tolerant OK) from "no classifiable errors at all"
+        # (OOM / silent crash — NOT tolerant even if the output happens to mention
+        # a PPA URL elsewhere).
+        [[ -n "$non_src_errors" ]] && raw_had_non_src_errors=1
+
+        # Optional (step 2): drop errors that are only on the Amnezia PPA — they
+        # will be re-checked via apt_wait_for_ppa_package against apt-cache (issue #68).
+        if [[ $ppa_tolerant -eq 1 && -n "$non_src_errors" ]]; then
+            non_src_errors=$(printf '%s\n' "$non_src_errors" \
+                | grep -vE 'ppa\.launchpadcontent\.net.*amnezia' || true)
+        fi
+
+        if [[ -z "$non_src_errors" ]]; then
+              # Edge case: rc != 0 but no classifiable E:/Err:/W: lines found
+              # (OOM-killer SIGKILL, silent crash, unknown apt output format).
+              # Ignore ONLY if the output actually contains source-markers, or if
+              # ppa-tolerant + there were real APT lines and all of them were on the
+              # Amnezia PPA.
+              if printf '%s\n' "$err_output" | grep -qE '(deb-src|/source/|Sources([^[:alpha:]]|$))'; then
+                  log_warn "apt update: source packages unavailable in mirror (expected, ignored)"
+                  return 0
+              fi
+              if [[ $ppa_tolerant -eq 1 && $raw_had_non_src_errors -eq 1 ]] \
+                  && printf '%s\n' "$err_output" | grep -qE 'ppa\.launchpadcontent\.net.*amnezia'; then
+                  log_warn "apt update: errors only on Amnezia PPA (issue #68), continuing with retry."
+                  return 0
+              fi
+              log_error "apt update exited with rc=$rc without any classifiable APT lines — possible silent crash / OOM / SIGKILL"
+              return "$rc"
+          fi
+
+          log_error "apt update failed with non-source errors:"
+          printf '%s\n' "$non_src_errors" | while IFS= read -r line; do
+              log_error "  $line"
+          done
+          return "$rc"
+    fi
 }
 
 # ==============================================================================
@@ -361,6 +365,7 @@ check_os_version() {
 
     # Detection via /etc/os-release (universal for Ubuntu and Debian)
     OS_ID=""
+    OS_PKG=""
     OS_VERSION=""
     OS_CODENAME=""
     if [[ -f /etc/os-release ]]; then
@@ -377,7 +382,12 @@ check_os_version() {
         log_warn "Cannot detect OS (/etc/os-release and lsb_release not found)."
         return 0
     fi
-    export OS_ID OS_VERSION OS_CODENAME
+    if [[ "$OS_CODENAME" == "" ]]; then
+        CODENAME=`cat /etc/*-release | grep "VERSION="`
+        CODENAME=${CODENAME##*\(}
+        CODENAME=${CODENAME%%\)*}
+        OS_CODENAME=${CODENAME}
+    fi
 
     # Supported OS
     local supported=0
@@ -392,7 +402,27 @@ check_os_version() {
                 supported=1
             fi
             ;;
+        centos)
+            if [[ "$OS_VERSION" == "9*" || "$OS_VERSION" == "10*" ]]; then
+                OS_PKG="rhel"
+                supported=1
+            fi
+            ;;
+        almalinux)
+            if [[ "$OS_VERSION" == "9*" || "$OS_VERSION" == "10*" ]]; then
+                OS_PKG="rhel"
+                supported=1
+            fi
+            ;;
+        rocky)
+            if [[ "$OS_VERSION" == "9*" || "$OS_VERSION" == "10*" ]]; then
+                OS_PKG="rhel"
+                supported=1
+            fi
+            ;;
     esac
+
+export OS_ID OS_VERSION OS_CODENAME OS_PKG
 
     if [[ "$supported" -eq 1 ]]; then
         log "OS: ${OS_ID^} $OS_VERSION ($OS_CODENAME) — supported"
@@ -444,59 +474,86 @@ check_port_availability() {
 }
 
 install_packages() {
-    local packages=("$@")
-    local to_install=()
-    local pkg
-    log "Checking packages: ${packages[*]}..."
-    for pkg in "${packages[@]}"; do
-        if ! dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q "ok installed"; then
-            to_install+=("$pkg")
-        fi
-    done
-    if [ ${#to_install[@]} -eq 0 ]; then
-        log "All packages already installed."
-        return 0
-    fi
-    log "Installing: ${to_install[*]}..."
-    if [[ "${_APT_UPDATED:-0}" -eq 0 ]]; then
-        # C4: a hard apt_update_tolerant failure (GPG / binary-repo network / OOM)
-        # is NOT source noise but a real error; continuing on a stale cache is not
-        # safe (contract line ~138, same as callers 1975/2108). die aborts the
-        # install, so _APT_UPDATED=1 is set only on success - otherwise a later
-        # install_packages call in this session would silently skip the update.
-        apt_update_tolerant || die "apt update error."
-        _APT_UPDATED=1
-    fi
-    if ! DEBIAN_FRONTEND=noninteractive apt install -y "${to_install[@]}"; then
-        # v5.13.0: typical failure on 25.10/26.04 after an in-place upgrade
-        # from 24.04 — the amneziawg-dkms postinst runs `dkms autoinstall`
-        # which iterates over ALL kernels in /lib/modules/. The leftover
-        # 6.8.x headers were compiled with gcc-13, but 25.10 ships only
-        # gcc-15 by default → autoinstall fails, dpkg leaves the dependent
-        # amneziawg-tools / amneziawg unconfigured. Force-build the module
-        # for the running kernel only and finish with dpkg --configure -a.
-        if printf '%s\n' "${to_install[@]}" | grep -qx "amneziawg-dkms"; then
-            log_warn "apt install did not complete — trying a DKMS build for the running kernel $(uname -r) only..."
-            local _mver
-            _mver="$(ls /var/lib/dkms/amneziawg/ 2>/dev/null | head -n1)"
-            if [[ -n "$_mver" ]] \
-               && dkms install -m amneziawg -v "$_mver" -k "$(uname -r)" --force \
-               && DEBIAN_FRONTEND=noninteractive dpkg --configure -a; then
-                log "DKMS module built for $(uname -r), dpkg configured."
-                log "Packages installed."
-                return 0
+    if [[ "$OS_PKG" != "rhel" ]]; then
+        local packages=("$@")
+        local to_install=()
+        local pkg
+        log "Checking packages: ${packages[*]}..."
+        for pkg in "${packages[@]}"; do
+            if ! dpkg-query -W -f='${Status}' "$pkg" 2>/dev/null | grep -q "ok installed"; then
+                to_install+=("$pkg")
             fi
+        done
+        if [ ${#to_install[@]} -eq 0 ]; then
+            log "All packages already installed."
+            return 0
         fi
-        die "Package installation error."
+        log "Installing: ${to_install[*]}..."
+        if [[ "${_APT_UPDATED:-0}" -eq 0 ]]; then
+            # C4: a hard apt_update_tolerant failure (GPG / binary-repo network / OOM)
+            # is NOT source noise but a real error; continuing on a stale cache is not
+            # safe (contract line ~138, same as callers 1975/2108). die aborts the
+            # install, so _APT_UPDATED=1 is set only on success - otherwise a later
+            # install_packages call in this session would silently skip the update.
+            apt_update_tolerant || die "apt update error."
+            _APT_UPDATED=1
+        fi
+        if ! DEBIAN_FRONTEND=noninteractive apt install -y "${to_install[@]}"; then
+            # v5.13.0: typical failure on 25.10/26.04 after an in-place upgrade
+            # from 24.04 — the amneziawg-dkms postinst runs `dkms autoinstall`
+            # which iterates over ALL kernels in /lib/modules/. The leftover
+            # 6.8.x headers were compiled with gcc-13, but 25.10 ships only
+            # gcc-15 by default → autoinstall fails, dpkg leaves the dependent
+            # amneziawg-tools / amneziawg unconfigured. Force-build the module
+            # for the running kernel only and finish with dpkg --configure -a.
+            if printf '%s\n' "${to_install[@]}" | grep -qx "amneziawg-dkms"; then
+                log_warn "apt install did not complete — trying a DKMS build for the running kernel $(uname -r) only..."
+                local _mver
+                _mver="$(ls /var/lib/dkms/amneziawg/ 2>/dev/null | head -n1)"
+                if [[ -n "$_mver" ]] \
+                   && dkms install -m amneziawg -v "$_mver" -k "$(uname -r)" --force \
+                   && DEBIAN_FRONTEND=noninteractive dpkg --configure -a; then
+                    log "DKMS module built for $(uname -r), dpkg configured."
+                    log "Packages installed."
+                    return 0
+                fi
+            fi
+            die "Package installation error."
+        fi
+        log "Packages installed."
     fi
-    log "Packages installed."
 }
 
 cleanup_apt() {
+  if [[ "$OS_PKG" != "rhel" ]]; then
     log "Cleaning apt..."
     apt-get clean || log_warn "apt-get clean error"
     rm -rf /var/lib/apt/lists/* || log_warn "rm /var/lib/apt/lists/* error"
     log "apt cache cleared."
+  fi
+}
+
+dnf_install_deps() {
+    local packages=("$@")
+    local to_install=()
+    local rpm
+    log "Checking rpm packages: ${packages[*]}..."
+    for rpm in "${packages[@]}"; do
+        if ! dnf list installed "$rpm" 2>/dev/null | grep -q "Installed Packages"; then
+            to_install+=("$rpm")
+        fi
+    done
+        if [ ${#to_install[@]} -eq 0 ]; then
+        log "All rpm packages already installed."
+        return 0
+    fi
+    log "Installing: ${to_install[*]}..."
+    if [[ "${_APT_UPDATED:-0}" -eq 0 ]]; then
+        apt_update_tolerant || log_warn "Failed to update apt."
+        _APT_UPDATED=1
+    fi
+    #dnf install  
+
 }
 
 configure_ipv6() {
@@ -2059,6 +2116,7 @@ step1_update_and_optimize() {
         log "Skipping system cleanup (--no-tweaks)."
     fi
 
+  if [[ "$OS_PKG" != "rhel" ]]; then
     log "Updating package lists..."
     apt_update_tolerant || die "apt update error."
 
@@ -2073,6 +2131,16 @@ step1_update_and_optimize() {
     log "System updated."
 
     install_packages curl wget gpg sudo ethtool
+    else
+        log "Updating dnf repos..."
+        dnf config-manager --set-enabled crb
+        dnf install -y epel-release
+        dnf copr enable -y amneziavpn/amneziawg
+        log "Install dnf depss..."
+        dnf_install_deps gcc make dkms kernel-devel-$(uname -r) \
+        kernel-headers-$(uname -r) amneziawg-tools qrencode \
+        ethtool curl wget gpg || die "dnf install error."
+    fi
 
     if [[ "$NO_TWEAKS" -eq 0 ]]; then
         # System optimization
