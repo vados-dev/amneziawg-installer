@@ -2,9 +2,9 @@ name: ShellCheck
 
 on:
   workflow_dispatch:
-#  push:
-#    branches: [main]
-#    paths: ['*.sh', 'scripts/**', 'tests/**']
+  push:
+    branches: [main]
+    paths: ['*.sh', 'scripts/**', 'tests/**']
 #  pull_request:
 #    branches: [main]
 #    paths: ['*.sh', 'scripts/**', 'tests/**']
