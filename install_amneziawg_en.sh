@@ -2143,8 +2143,8 @@ step1_update_and_optimize() {
         dnf install -y epel-release
         dnf copr enable -y amneziavpn/amneziawg
         log "Install dnf depss..."
-        dnf_install_deps gcc make dkms kernel-devel-$(uname -r) \
-        kernel-headers-$(uname -r) amneziawg-tools qrencode \
+        dnf_install_deps gcc make dkms kernel-devel-"$(uname -r)" \
+        kernel-headers-"$(uname -r)" amneziawg-tools qrencode \
         ethtool curl wget gpg || die "dnf install error."
     fi
 
