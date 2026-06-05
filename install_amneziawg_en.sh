@@ -428,7 +428,7 @@ check_os_version() {
             ;;
     esac
 
-export OS_ID OS_VERSION OS_CODENAME OS_PKG
+    export OS_ID OS_VERSION OS_CODENAME OS_PKG
 
     if [[ "$supported" -eq 1 ]]; then
         log "OS: ${OS_ID^} $OS_VERSION ($OS_CODENAME) — supported"
@@ -2122,21 +2122,21 @@ step1_update_and_optimize() {
         log "Skipping system cleanup (--no-tweaks)."
     fi
 
-  if [[ "$OS_PKG" != "rhel" ]]; then
-    log "Updating package lists..."
-    apt_update_tolerant || die "apt update error."
+    if [[ "$OS_PKG" != "rhel" ]]; then
+        log "Updating package lists..."
+        apt_update_tolerant || die "apt update error."
 
-    log "Unlocking dpkg..."
-    if ! apt-get check &>/dev/null; then
-        log_warn "dpkg locked or corrupted, fixing..."
-        DEBIAN_FRONTEND=noninteractive dpkg --configure -a || log_warn "dpkg --configure -a."
-    fi
+        log "Unlocking dpkg..."
+        if ! apt-get check &>/dev/null; then
+            log_warn "dpkg locked or corrupted, fixing..."
+            DEBIAN_FRONTEND=noninteractive dpkg --configure -a || log_warn "dpkg --configure -a."
+        fi
 
-    log "Updating system..."
-    DEBIAN_FRONTEND=noninteractive apt full-upgrade -y || die "apt full-upgrade error."
-    log "System updated."
+        log "Updating system..."
+        DEBIAN_FRONTEND=noninteractive apt full-upgrade -y || die "apt full-upgrade error."
+        log "System updated."
 
-    install_packages curl wget gpg sudo ethtool
+        install_packages curl wget gpg sudo ethtool
     else
         log "Updating dnf repos..."
         dnf config-manager --set-enabled crb
