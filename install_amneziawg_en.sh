@@ -44,7 +44,23 @@ CLI_PORT=""; CLI_SUBNET=""; CLI_DISABLE_IPV6="default"; CLI_SSH_PORT=""
 CLI_ROUTING_MODE="default"; CLI_CUSTOM_ROUTES=""; CLI_ENDPOINT=""; CLI_NO_TWEAKS=0
 CLI_ALLOW_IPV6_TUNNEL=0
 
-export $(grep -v '^#' .env | xargs)
+    local confirm="y"
+    if [[ "$AUTO_YES" -eq 0 ]]; then
+        read -rp "Reboot now? [y/N]: " confirm < /dev/tty
+    else
+        log "Auto-confirming reboot (--yes)."
+    fi
+    if [[ "$confirm" =~ ^[Yy]$ ]]; then
+        log "Reboot initiated..."
+        sleep 5
+        if ! reboot; then die "Reboot command failed."; fi
+        exit 1
+    else
+        log "Reboot cancelled. Reboot manually and run the script again."
+        exit 1
+    fi
+
+export ./.env
 
 # --- Auto-cleanup of temporary files ---
 _install_temp_files=()
