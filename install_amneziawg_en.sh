@@ -44,23 +44,13 @@ CLI_PORT=""; CLI_SUBNET=""; CLI_DISABLE_IPV6="default"; CLI_SSH_PORT=""
 CLI_ROUTING_MODE="default"; CLI_CUSTOM_ROUTES=""; CLI_ENDPOINT=""; CLI_NO_TWEAKS=0
 CLI_ALLOW_IPV6_TUNNEL=0
 
-    local confirm="y"
-    if [[ "$AUTO_YES" -eq 0 ]]; then
-        read -rp "Reboot now? [y/N]: " confirm < /dev/tty
-    else
-        log "Auto-confirming reboot (--yes)."
-    fi
-    if [[ "$confirm" =~ ^[Yy]$ ]]; then
-        log "Reboot initiated..."
-        sleep 5
-        if ! reboot; then die "Reboot command failed."; fi
-        exit 1
-    else
-        log "Reboot cancelled. Reboot manually and run the script again."
-        exit 1
-    fi
-
-export ./.env
+until [[ ${confirm} =~ ^[Yy]$ ]]; do
+    read -rp "Include ./.install_env file? [Y/n]: " -e -i "Y" confirm < /dev/tty
+done
+if [[ "$confirm" =~ ^[Yy]$ ]]; then
+    source ./.install_env || exit 1
+    echo "./.install_env file sourced successfully"
+fi
 
 # --- Auto-cleanup of temporary files ---
 _install_temp_files=()
